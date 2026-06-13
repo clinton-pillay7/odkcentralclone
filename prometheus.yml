@@ -1,0 +1,27 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'prometheus'
+    metrics_path: '/prometheus/metrics'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres_exporter:9187']
+        labels:
+          service: 'postgres14'
+
+  - job_name: 'redis_main'
+    static_configs:
+      - targets: ['redis_exporter_main:9121']
+        labels:
+          instance: 'enketo_redis_main'
+
+  - job_name: 'redis_cache'
+    static_configs:
+      - targets: ['redis_exporter_cache:9121']
+        labels:
+          instance: 'enketo_redis_cache'

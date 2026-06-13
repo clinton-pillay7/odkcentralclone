@@ -11,6 +11,7 @@ services:
       POSTGRES_PASSWORD: odk
       POSTGRES_DB: odk
     restart: always
+
   postgres:
     # This service upgrades from postgres 9.6 to 14.
     # The legacy name must be maintained to allow access to the anonymous volume.
@@ -27,6 +28,7 @@ services:
       POSTGRES_INITDB_ARGS: -U odk
       POSTGRES_PASSWORD: odk
       POSTGRES_DB: odk
+
   mail:
     image: "registry.gitlab.com/egos-tech/smtp:1.2.2"
     volumes:
@@ -35,11 +37,12 @@ services:
       - MAILNAME=${DOMAIN}
       - DKIM_KEY_PATH=/etc/exim4/dkim.key.temp
     restart: always
+
   service:
     build:
       context: .
       args:
-        DB_SSL: ${DB_SSL:-}  # So that we can error out at build time if this is defined with a value of "true" (no longer supported from 2026.1).
+        DB_SSL: ${DB_SSL:-}
       dockerfile: service.dockerfile
     depends_on:
       - secrets
@@ -57,17 +60,11 @@ services:
       - SYSADMIN_EMAIL=${SYSADMIN_EMAIL}
       - HTTPS_PORT=${HTTPS_PORT:-443}
       - NODE_OPTIONS=${SERVICE_NODE_OPTIONS:-}
-      # Prepare libpq connection env vars, while handling legacy DB_* vars.
-      # Resolution order:
-      # 1. PGVAR specified in .env. This includes declarations with empty values, for instance, to use an empty password (PGPASSWORD=).
-      # 2. Corresponding legacy DB_VAR in .env. These are legacy overrides for custom database connections.
-      # 3. ODK default value.
       - PGHOST=${PGHOST-${DB_HOST:-postgres14}}
       - PGDATABASE=${PGDATABASE-${DB_NAME:-odk}}
       - PGUSER=${PGUSER-${DB_USER:-odk}}
       - PGPASSWORD=${PGPASSWORD-${DB_PASSWORD:-odk}}
       - PGAPPNAME=${PGAPPNAME-odkcentral}
-      # End of libpq connection env var preparation.
       - DB_POOL_SIZE=${DB_POOL_SIZE:-10}
       - EMAIL_FROM=${EMAIL_FROM:-no-reply@$DOMAIN}
       - EMAIL_HOST=${EMAIL_HOST:-mail}
@@ -93,6 +90,7 @@ services:
     restart: always
     logging:
       driver: local
+
   nginx:
     build:
       context: .
@@ -109,6 +107,7 @@ services:
       - SENTRY_PROJECT=${SENTRY_PROJECT:-1298632}
       - OIDC_ENABLED=${OIDC_ENABLED:-false}
     volumes:
+      - ./files/nginx/prometheus.htpasswd:/etc/nginx/prometheus.htpasswd:ro
       - ./files/local/customssl/:/etc/customssl/live/local/:ro
       - ./files/nginx/odk.conf.template:/usr/share/odk/nginx/odk.conf.template:ro
       - ./files/nginx/client-config.json.template:/usr/share/odk/nginx/client-config.json.template:ro
@@ -122,9 +121,11 @@ services:
       driver: local
       options:
         max-file: "30"
+
   pyxform:
     image: 'ghcr.io/getodk/pyxform-http:v4.4.1'
     restart: always
+
   secrets:
     volumes:
       - secrets:/etc/secrets
@@ -132,6 +133,7 @@ services:
       context: .
       dockerfile: secrets.dockerfile
     command: './generate-secrets.sh'
+
   enketo:
     volumes:
       - secrets:/etc/secrets
@@ -147,6 +149,7 @@ services:
       - DOMAIN=${DOMAIN}
       - SUPPORT_EMAIL=${SYSADMIN_EMAIL}
       - HTTPS_PORT=${HTTPS_PORT:-443}
+
   enketo_redis_main:
     image: redis:8.6.2
     volumes:
@@ -156,6 +159,7 @@ services:
       - redis-server
       - /usr/local/etc/redis/redis.conf
     restart: always
+
   enketo_redis_cache:
     image: redis:8.6.2
     volumes:
@@ -165,9 +169,69 @@ services:
       - redis-server
       - /usr/local/etc/redis/redis.conf
     restart: always
+
+  # ---------------------------------------------------------------------------
+  # Monitoring stack
+  # ---------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v3.4.1
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+      - '--web.external-url=/prometheus/'   # ← add
+      - '--web.route-prefix=/prometheus/'   # ← add
+    # ports removed — access via Nginx instead
+    depends_on:
+      - postgres_exporter
+      - redis_exporter_main
+      - redis_exporter_cache
+    restart: always
+    logging:
+      driver: local
+
+
+  # Exports PostgreSQL metrics
+  postgres_exporter:
+    image: prometheuscommunity/postgres-exporter:v0.17.1
+    environment:
+      DATA_SOURCE_NAME: "postgresql://odk:odk@postgres14:5432/odk?sslmode=disable"
+    depends_on:
+      - postgres14
+    restart: always
+    logging:
+      driver: local
+
+  # Exports metrics for the Enketo main Redis instance
+  redis_exporter_main:
+    image: oliver006/redis_exporter:v1.74.0
+    environment:
+      REDIS_ADDR: "redis://enketo_redis_main:6379"
+    depends_on:
+      - enketo_redis_main
+    restart: always
+    logging:
+      driver: local
+
+  # Exports metrics for the Enketo cache Redis instance
+  redis_exporter_cache:
+    image: oliver006/redis_exporter:v1.74.0
+    environment:
+      REDIS_ADDR: "redis://enketo_redis_cache:6379"
+    depends_on:
+      - enketo_redis_cache
+    restart: always
+    logging:
+      driver: local
+
 volumes:
   secrets:
   transfer:
   postgres14:
   enketo_redis_main:
   enketo_redis_cache:
+  prometheus_data:
