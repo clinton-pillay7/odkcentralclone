@@ -228,6 +228,21 @@ services:
     logging:
       driver: local
 
+  grafana:
+    image: grafana/grafana:11.6.1
+    volumes:
+      - grafana_data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_SERVER_ROOT_URL=https://${DOMAIN}/grafana/
+      - GF_SERVER_SERVE_FROM_SUB_PATH=true
+    depends_on:
+      - prometheus
+    restart: always
+    logging:
+      driver: local
+
 volumes:
   secrets:
   transfer:
@@ -235,3 +250,4 @@ volumes:
   enketo_redis_main:
   enketo_redis_cache:
   prometheus_data:
+  grafana_data: 
