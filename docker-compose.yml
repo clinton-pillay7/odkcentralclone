@@ -10,6 +10,8 @@ services:
       POSTGRES_USER: odk
       POSTGRES_PASSWORD: odk
       POSTGRES_DB: odk
+    ports:
+      - "5432:5432"      
     restart: always
 
   postgres:
