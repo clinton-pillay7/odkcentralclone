@@ -1,0 +1,29 @@
+http://host.docker.internal:5000
+
+
+
+CENTRAL_WEBHOOK_NEW_SUBMISSION_URL=http://host.docker.internal:5000/webhook
+CENTRAL_WEBHOOK_REVIEW_SUBMISSION_URL=http://host.docker.internal:5000/webhook
+CENTRAL_WEBHOOK_UPDATE_ENTITY_URL=http://host.docker.internal:5000/webhook
+CENTRAL_WEBHOOK_API_KEY=your-secret-api-key
+CENTRAL_WEBHOOK_LOG_LEVEL=INFO
+CENTRAL_WEBHOOK_TAG=latest
+POSTGRES_MAJOR=14
+
+
+
+docker compose exec service odk-cmd --email clinton.pillay@outlook.com user-create
+docker compose exec service odk-cmd --email clinton.pillay@outlook.com user-promote
+
+
+
+
+
+
+
+ ./centralwebhook install \
+    -db 'postgresql://odk:odk@localhost:5432/odk?sslmode=disable' \
+    -newSubmissionUrl 'http://172.17.0.1:5000/webhook' \
+    -reviewSubmissionUrl 'http://172.17.0.1:5000/webhook' \
+    -updateEntityUrl 'http://172.17.0.1:5000/webhook'
+
