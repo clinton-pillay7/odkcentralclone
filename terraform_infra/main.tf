@@ -34,13 +34,15 @@ resource "aws_instance" "minikube_ec2" {
               newgrp docker
               sudo yum install -y git
               sudo yum install -y httpd-tools
+              sudo yum install -y python-pip
+              pip install flask
 
               MY_IP=$(curl -s https://checkip.amazonaws.com)
-              curl -s "https://www.duckdns.org/update?domains=${var.duckdns_domain}&token=${var.duckdns_token}&ip=$MY_IP"
               
               mkdir -p /usr/local/lib/docker/cli-plugins
-              curl -L https://github.com/docker/buildx/releases/download/v0.17.1/buildx-v0.17.1.linux-amd64 -o /usr/local/lib/docker/cli-plugins/docker-buildx
-              chmod +x /usr/local/lib/docker/cli-plugins/docker-buildx
+              curl -fsSL https://github.com/docker/compose/releases/download/v2.29.1/docker-compose-linux-x86_64 -o /usr/local/lib/docker/cli-plugins/docker-compose
+              chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
 
               mkdir -p /home/ec2-user/.docker/cli-plugins
               curl -L https://github.com/docker/buildx/releases/download/v0.17.1/buildx-v0.17.1.linux-amd64 -o /home/ec2-user/.docker/cli-plugins/docker-buildx
@@ -85,9 +87,11 @@ resource "aws_instance" "minikube_ec2" {
               export GOPATH=/root/go
               export GOMODCACHE=/root/go/pkg/mod
 
-              cd /home/ec2-user/central/central-webhook
-              go build -o centralwebhook .
+              mkdir -p /home/ec2-user/go/pkg/mod
+              chown -R ec2-user:ec2-user /home/ec2-user/go
 
+              cd /home/ec2-user/central/central-webhook
+              sudo -u ec2-user GOPATH=/home/ec2-user/go GOMODCACHE=/home/ec2-user/go/pkg/mod /usr/local/go/bin/go build -buildvcs=false -o centralwebhook .
 
               cd /home/ec2-user/central
               /usr/local/lib/docker/cli-plugins/docker-compose -f docker-compose.yml -f /home/ec2-user/central/central-webhook/compose.webhook.yml up -d
@@ -103,7 +107,7 @@ resource "aws_instance" "minikube_ec2" {
                   -db 'postgresql://odk:odk@localhost:5432/odk?sslmode=disable' \
                   -newSubmissionUrl 'http://172.17.0.1:5000/webhook' \
                   -reviewSubmissionUrl 'http://172.17.0.1:5000/webhook' \
-                  -updateEntityUrl 'http://172.17.0.1:5000/webhook'
+                  -updateEntityUrl 'http://172.17.0.1:5000/webhook' || true
 
               echo "ODK Central setup complete!"
 
