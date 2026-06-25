@@ -29,3 +29,34 @@ variable "grafana_pass" {
   description = "Grafana admin password"
   sensitive   = true
 }
+
+variable "noip_username" {
+  description = "noip_username"
+  type        = string
+  sensitive   = true
+  default     = "6h7ksfs"
+}
+
+variable "noip_passkey" {
+  description = "noip_passkey"
+  type        = string
+  sensitive   = true
+  default     = "zpwRdxoKRFZT"
+}
+
+variable "odk_username" {
+  type        = string
+  description = "ODK Central login email ID."
+  
+  validation {
+    condition     = can(regex("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$", var.odk_username))
+    error_message = "The sysadmin_email value must be a valid email address."
+  }
+}
+
+variable "odk_password" {
+  description = "odk_password"
+  type        = string
+  sensitive   = true
+}
+

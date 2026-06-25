@@ -26,6 +26,7 @@ resource "aws_instance" "minikube_ec2" {
 
   user_data = <<-EOF
               #!/bin/bash
+              echo "-------Installing Dependencies-------"
               sudo yum update -y
               sudo amazon-linux-extras enable docker
               sudo yum install -y docker
@@ -37,17 +38,23 @@ resource "aws_instance" "minikube_ec2" {
               sudo yum install -y python-pip
               pip install flask
 
-              MY_IP=$(curl -s https://checkip.amazonaws.com)
+              echo "-------setting DNS for domain name-------"  
+              wget --content-disposition https://www.noip.com/download/linux/latest
+              tar xf noip-duc_3.3.0.tar.gz
+              cd /home/$USER/noip-duc_3.3.0/binaries && sudo apt install ./noip-duc_3.3.0_amd64.deb
+              noip-duc -g all.ddnskey.com --username ${var.noip_username} --password ${var.noip_passkey}
               
+              echo "-------installing docker compose-------"
               mkdir -p /usr/local/lib/docker/cli-plugins
               curl -fsSL https://github.com/docker/compose/releases/download/v2.29.1/docker-compose-linux-x86_64 -o /usr/local/lib/docker/cli-plugins/docker-compose
               chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 
-
+              echo "-------Installing buildx plugin-------"
               mkdir -p /home/ec2-user/.docker/cli-plugins
               curl -L https://github.com/docker/buildx/releases/download/v0.17.1/buildx-v0.17.1.linux-amd64 -o /home/ec2-user/.docker/cli-plugins/docker-buildx
               chmod +x /home/ec2-user/.docker/cli-plugins/docker-buildx  
 
+              echo "-------running git clone for ODkcentralcone and setting env var-------"
               git clone https://github.com/clinton-pillay7/odkcentralclone.git /home/ec2-user/central
               cd /home/ec2-user/central
               git submodule update --init --recursive
@@ -68,6 +75,7 @@ resource "aws_instance" "minikube_ec2" {
               echo GRAFANA_USER=admin >> /home/ec2-user/central/.env
               echo GRAFANA_PASSWORD=${var.grafana_pass} >> /home/ec2-user/central/.env
 
+              echo "-------setting swap system settings-------"
               sudo fallocate -l 2G /swap
               sudo dd if=/dev/zero of=/swap bs=1k count=2048k
               sudo chmod 600 /swap
@@ -77,10 +85,12 @@ resource "aws_instance" "minikube_ec2" {
               echo '/swapfile none swap sw 0 0' >> /etc/sysctl.conf
               echo '/swap swap swap defaults 0 0' >> /etc/fstab
 
+              echo "-------taking ownership-------"
               chown -R ec2-user:ec2-user /home/ec2-user/.docker
               chown -R ec2-user:ec2-user /home/ec2-user/central
               chmod -R u=rwX,go=rX /home/ec2-user/central
 
+              echo "-------installing GO-------"
               curl -OL https://go.dev/dl/go1.25.5.linux-amd64.tar.gz
               sudo tar -C /usr/local -xzf go1.25.5.linux-amd64.tar.gz
               export PATH=/usr/local/go/bin:$PATH
@@ -90,24 +100,50 @@ resource "aws_instance" "minikube_ec2" {
               mkdir -p /home/ec2-user/go/pkg/mod
               chown -R ec2-user:ec2-user /home/ec2-user/go
 
+              echo "-------building GO webhook package-------"
               cd /home/ec2-user/central/central-webhook
               sudo -u ec2-user GOPATH=/home/ec2-user/go GOMODCACHE=/home/ec2-user/go/pkg/mod /usr/local/go/bin/go build -buildvcs=false -o centralwebhook .
 
+              echo "-------running docker compose files-------"
               cd /home/ec2-user/central
               /usr/local/lib/docker/cli-plugins/docker-compose -f docker-compose.yml -f /home/ec2-user/central/central-webhook/compose.webhook.yml up -d
 
-
+              echo "-------waiting for postgresql container to startup-------"
               echo "Waiting for PostgreSQL to be ready..."
               until docker exec central-postgres14-1 pg_isready -U odk; do
                 echo "PostgreSQL not ready, waiting..."
                 sleep 5
               done
 
+              echo "-------installing triggers on database-------"
+              cd /home/ec2-user/central/central-webhook
               ./centralwebhook install \
                   -db 'postgresql://odk:odk@localhost:5432/odk?sslmode=disable' \
                   -newSubmissionUrl 'http://172.17.0.1:5000/webhook' \
                   -reviewSubmissionUrl 'http://172.17.0.1:5000/webhook' \
                   -updateEntityUrl 'http://172.17.0.1:5000/webhook' || true
+
+              echo "-------Waiting for ODK service to be healthy-------"
+              until [ "$(docker inspect --format='{{.State.Health.Status}}' central-service-1)" = "healthy" ]; do
+                echo "Waiting for service container to be healthy..."
+                sleep 10
+              done
+
+              echo "-------creating ODK admin user-------"
+              until echo "${var.odk_password}" | docker compose -f /home/ec2-user/central/docker-compose.yml exec -T service \
+                odk-cmd --email ${var.odk_username} user-create; do
+                echo "Retrying user-create..."
+                sleep 5
+              done
+
+              echo "-------Promoting ODK admin user-------"
+              until docker compose -f /home/ec2-user/central/docker-compose.yml exec -T service \
+                odk-cmd --email ${var.odk_username} user-promote; do
+                echo "Retrying user-promote..."
+                sleep 5
+              done
+
+
 
               echo "ODK Central setup complete!"
 
