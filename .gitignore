@@ -21,3 +21,5 @@
 /terraform_infra/.terraform.lock.hcl
 /terraform_infra/*.tfstate
 /terraform_infra/*.tfstate.backup
+/terraform_infra/terraform.tfvars
+/terraform_infra/*.tfvars

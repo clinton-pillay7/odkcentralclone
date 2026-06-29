@@ -75,6 +75,19 @@ resource "aws_instance" "minikube_ec2" {
               echo GRAFANA_USER=admin >> /home/ec2-user/central/.env
               echo GRAFANA_PASSWORD=${var.grafana_pass} >> /home/ec2-user/central/.env
 
+              # ── Clone webhook listener ─────────────────────────────────────────────────────
+              git clone https://github.com/clinton-pillay7/odk-webhook-listener.git /home/ec2-user/odk-webhook-listener
+
+              # ── Install dependencies for listener ───────────────────────────────────────────────────────
+              pip3 install -r /home/ec2-user/odk-webhook-listener/requirements.txt
+
+              # ── Install and start systemd service for listener ─────────────────────────────────────────
+              cp /home/ec2-user/odk-webhook-listener/odk-webhook.service /etc/systemd/system/
+              systemctl daemon-reload
+              systemctl enable odk-webhook
+              systemctl start odk-webhook
+              
+
               echo "-------setting swap system settings-------"
               sudo fallocate -l 2G /swap
               sudo dd if=/dev/zero of=/swap bs=1k count=2048k
@@ -117,6 +130,7 @@ resource "aws_instance" "minikube_ec2" {
 
               echo "-------installing triggers on database-------"
               cd /home/ec2-user/central/central-webhook
+              ./centralwebhook uninstall -db 'postgresql://odk:odk@localhost:5432/odk?sslmode=disable' || true
               ./centralwebhook install \
                   -db 'postgresql://odk:odk@localhost:5432/odk?sslmode=disable' \
                   -newSubmissionUrl 'http://172.17.0.1:5000/webhook' \
